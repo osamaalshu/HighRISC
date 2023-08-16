@@ -1,0 +1,275 @@
+// Input: 
+// mem[0:31]: 32 1-byte messages in : (b7 b6 b5 b4 b3 b2 b1 b0)
+// mem[32]: 1 5-bit pattern in: (p4 p3 p2 p1 p0 000)
+// 
+// Output:
+// mem[33]: total number of occurences of pattern without byte boundary crossing
+// mem[34]: total number of bytes in which pattern occurs (without byte boundary crossing I think)
+// mem[35]: total number of occurences of pattern with byte boundary crossing
+
+// ===========================================================================================================
+// ===========================================================================================================
+// PART A & B: Number of Pattern Occurences without Byte Boundary Crossing and Number of Bytes With Message
+// ===========================================================================================================
+// ===========================================================================================================
+
+// set loop iterator variable
+SET R0 #0                   // R14 = 0, used for looping through the 32 1-byte messages
+MOV1 R14 R0 
+
+// get the 5 bit pattern first
+SET R0 #1                   // R0 = 0000 0001
+SET R1 #5   
+SLL R0                      // R0 = R0 << R1 = 0010 0000 = 32
+MOV1 R13 R0                 // R13 = 32, used to get the 5-bit pattern in mem[32]
+LW R13                      // R15 = Mem[32]
+MOV2 R0 R15
+MOV1 R3 R0                  // R3 = R15, R3 now holds the 5-bit pattern
+
+// NOTE: R4 is used to keep track of total number of occurences
+// SET R4 #0               
+
+// NOTE: R5 is used to keep track of number of bytes within which the pattern occurs
+// SET R5 #0                // R5 = 0, this line is not necessary but is here for clarity
+
+LOOP:
+
+// keep track of number of pattern occurences before analyzing this message. we will check later 
+// whether it stayed the same to determine if pattern was found in this byte
+MOV2 R0 R4                  // R0 = R4
+MOV1 R8 R0                  // R8 = R4, R8 now holds the total number of occurences before analyzing this message
+
+// get the 1-byte message from data mem
+LW R14                      // R15 = Mem[LUT[0]]
+MOV2 R0 R15                 // R0 = R15
+MOV1 R10 R0                 // R10 = R0, make a copy of the 1-bit message in R10
+
+// create mask
+SET R0 b'11111              // R0 = b'0001 1111
+SET R1 #3                   // R1 = 3
+SLL R9                      // R0 = R0 << R1 = b'1111 1000
+
+// Loop 4 times to look through the message byte
+SET R0 #0
+MOV1 R13 R0                 // R13 = 0, start iterator variable off as 0     
+FIND_PATTERN:
+
+// look at first 5 bits of message
+MOV2 R0 R10                 // R0 = R10 = message
+MOV2 R1 R9                  // R1 = R9 = mask
+AND R6                      // R6 = R0 & R1 = message & b'1111 1000 = first 5 bits of message
+
+// see if masked message and pattern are equal
+MOV2 R0 R6                  // move masked message into R0
+MOV2 R1 R3                  // move pattern into R1
+BNE PATTERN_NOT_FOUND       // branch to PATTERN_NOT_FOUND if masked message is not the pattern
+
+// pattern found!, increment R4
+MOV2 R0 R4                  // move total num of occurrences into R0
+SET R1 #1                   // R1 = 1
+ADD R4                      // R4 = R0 + R1 = total num of occurences + 1
+
+PATTERN_NOT_FOUND:
+
+// NOTE: R10 holds the message
+// left shift R10 by 1
+MOV2 R0 R10                 // R0 = R10 = message
+SET R1 #1                   // R1 = 1
+SLL R10                     // R10 = R0 << 1, do this so the mask will capture the next 5 bits of the message in the next iteration
+
+// increment R13 loop iterator
+MOV2 R0 R13
+SET R1 #1
+ADD R13
+
+// check if loop is done
+MOV2 R0 R13
+SET R1 #4
+BNE FIND_PATTERN            // if loop has not run for 4 times, we are not done checking for the pattern in the message
+
+// compare R4 and R8. if not equal, then message was found in this message, increment R5
+MOV2 R0 R4                  // R0 = R4 = total number of occurences, potentially updated after the loop           
+MOV2 R1 R8                  // R1 = R8 = old total number of occurences
+BEQ PATTERN_NOT_IN_BYTE     // branch to PATTERN_NOT_IN_BYTE if pattern is not found in the message
+
+// pattern was found in this message!, increment R5
+MOV2 R0 R5                  // move total num of occurrences into R0
+SET R1 #1                   // R1 = 1
+ADD R5                      // R5 = R0 + R1 = total num of occurences + 1
+
+PATTERN_NOT_IN_BYTE:
+
+// increment iterator variable R14
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+
+// branch to LOOP if iterator is not 32 (loop has executed 32 times)
+SET R0 #1                    // R0 = 0000 0001
+SET R1 #5    
+SLL R0                       // R0 = R0 << R1 = 0010 0000 = 32
+MOV2 R1 R14  
+BNE LOOP     
+     
+// store mem[33]: total      number of occurences of pattern without byte boundary crossing
+SET R0 #1                    // R0 = 0000 0001
+SET R1 #5        
+SLL R0                       // R0 = R0 << R1 = 0010 0000 = 32
+SET R1 #1                    // R1 = 1
+ADD R13                      // R13 = R0 + R1 = 33, used to get the 5-bit pattern in mem[33]
+MOV2 R0 R4                   // R0 = R4, R4 holds total num pattern occurences without boundary crossing
+MOV1 R15 R0                  // R15 = R4, R4 holds total num pattern occurences without boundary crossing
+SW R13                       // Mem[LUT[33]] = R15 = R4
+     
+// store mem[34]: total      number of bytes in which pattern occurs (without byte boundary crossing I think)
+SET R0 b'10001               // R0 = b'0001 0001
+SET R1 #1                    // R1 = 1
+SLL R13                      // R13 = R0 << R1 = b'0010 0010 = 34, used to get the 5-bit pattern in mem[34]
+MOV2 R0 R5                   // R0 = R5, R5 holds total num of bytes in which pattern occurs
+MOV1 R15 R0                  // R15 = R5, R5 holds total num of bytes in which pattern occurs
+SW R13                       // Mem[LUT[34]] = R15 = R5
+     
+// ===========================================================================================================
+// ===========================================================================================================
+// PART C: Number of Pattern Occurences with Byte Boundary Crossing
+// ===========================================================================================================
+// ===========================================================================================================
+     
+// set loop iterator variable
+SET R0 #1                    // R0 = 1
+MOV1 R14 R0                  // R14 = 1, used for looping through the 32 1-byte messages
+     
+// get the first message byte
+SET R0 #0                    // R0 = 0000 0000, used to get the first message byte in mem[0]
+LW R0                        // R15 = Mem[LUT[0]]
+MOV2 R0 R15                  // R0 = R15, R0 now holds the first message byte
+MOV1 R10 R0                  // R10 = R0, R10 now holds the first message byte
+     
+// variable to keep track of total number of occurences
+SET R0 #0                    // R0 = 0
+MOV1 R4 R0                   // R4 = 0, this line is not necessary but is here for clarity
+
+LOOP_31_TIMES:
+
+// load next message byte into R7
+LW R14                       // R15 = Mem[LUT[R14]], R14 starts at 1 and goes to 32
+MOV2 R0 R15                  // R0 = R15, R0 now holds the next message byte
+MOV1 R7 R0                   // R7 = R0, R7 now holds the next message byte
+
+// find pattern with crossing boundaries, iterator variable is R13
+SET R0 #0
+MOV1 R13 R0                 // R13 = 0
+
+FIND_PATTERN_CB:
+
+// look at first 5 bits of message
+SET R0 b'11111              // R1 = b'0001 1111
+SET R1 #3                   // R1 = 3
+SLL R1                      // R1 = R1 << R0 = b'1111 1000 = mask
+MOV2 R0 R10                 // R0 = R10 = message
+AND R6                      // R6 = R0 & R1 = message & b'1111 1000
+
+// see if masked message and pattern are equal
+MOV2 R0 R6                  // move masked message into R0
+MOV2 R1 R3                  // move pattern into R1
+BNE PATTERN_NOT_FOUND_CB    // branch to PATTERN_NOT_FOUND if masked message is not the pattern
+
+// pattern found!, increment R4
+MOV2 R0 R4                  // move total num of occurrences into R0
+SET R1 #1                   // R1 = 1
+ADD R4                      // R4 = R0 + R1 = total num of occurences + 1
+
+PATTERN_NOT_FOUND_CB:
+
+// left shift R10 by 1
+MOV2 R0 R10                 // R0 = R10 = message
+SET R1 #1                   // R1 = 1
+SLL R10                     // R10 = R0 << 1, do this so the mask will capture the next 5 bits of the message in the next iteration
+
+// make R11 hold the leftmost bit of R7, it is the bit across the boundary
+// right shift R11 by 7 to move bit all the way right, b7,b6,b5,b4,b3,b2,b1,b0 -> 0000 000b7
+MOV2 R0 R7
+SET R1 #7
+SRL R11
+
+// OR R10 and R11, move the bit across the boundary 
+MOV2 R0 R10
+MOV2 R1 R11
+OR R10
+
+// left shift R7 by 1
+MOV2 R0 R7
+SET R1 #1
+SLL R7
+
+// increment R13 loop iterator
+MOV2 R0 R13
+SET R1 #1
+ADD R13
+
+// check if loop is done
+MOV2 R0 R13
+SET R1 #8
+BNE FIND_PATTERN_CB         // if loop has not run for 8 times, we are not done checking for the pattern in the message
+
+// increment iterator variable R14
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+
+// branch if iterator is not 32 (loop has executed 31 times)
+SET R0 #1                  // R0 = 0000 0001
+SET R1 #5
+SLL R0                     // R0 = R0 << R1 = 0010 0000 = 32
+MOV2 R1 R14
+BNE LOOP_31_TIMES
+
+// Get the last remaining 4 patterns checked
+SET R0 #0
+MOV1 R13 R0               // R13 = 0
+
+FIND_PATTERN_CB_LAST:
+
+// look at first 5 bits of message
+MOV2 R0 R10               // R0 = R10 = message
+MOV2 R1 R9                // R1 = R9 = mask
+AND R6                    // R6 = R0 & R1 = message & b'1111 1000
+
+// see if masked message and pattern are equal
+MOV2 R0 R6                // move masked message into R0
+MOV2 R1 R3                // move pattern into R1
+BNE PATTERN_NOT_FOUND_CB_LAST     // branch to PATTERN_NOT_FOUND_CB_LAST if masked message is not the pattern
+
+// pattern found!, increment R4
+MOV2 R0 R4               // move total num of occurrences into R0
+SET R1 #1                // R1 = 1
+ADD R4                   // R4 = R0 + R1 = total num of occurences + 1
+
+PATTERN_NOT_FOUND_CB_LAST:
+
+// left shift R10 by 1
+MOV2 R0 R10              // R0 = R10 = message
+SET R1 #1                // R1 = 1
+SLL R10                  // R10 = R0 << 1, do this so the mask will capture the next 5 bits of the message in the next iteration
+
+// increment R13 loop iterator
+MOV2 R0 R13
+SET R1 #1
+ADD R13
+
+// check if loop is done
+MOV2 R0 R13
+SET R1 #4
+BNE FIND_PATTERN_CB_LAST        // if loop has not run for 4 times, we are not done checking for the pattern in the message
+
+// store mem[35]: total number of occurences of pattern with byte boundary crossing
+SET R0 #1               // R0 = 0000 0001, instruction 135
+SET R1 #5
+SLL R0                  // R0 = R0 << R1 = 0010 0000 = 32
+SET R1 #3
+ADD R13                 // R13 = R0 + R1 = 35
+MOV2 R0 R4              // instruction 140
+MOV1 R15 R0             // R15 = R4, R4 holds total num pattern occurences with boundary crossing
+SW R13                  // Mem[LUT[33]] = R15
+
+NOOP

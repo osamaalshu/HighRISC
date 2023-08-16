@@ -1,0 +1,309 @@
+SET R0 #0               // R0 = 0, used for temp storage
+MOV1 R14 R0             // R14 = R0 -> R14 = 0, used for looping through the 15 2-byte messages
+
+LOOP:
+
+// read from data mem into R1 R0
+LW R14                  // R15 = Mem[LUT[0]]
+MOV2 R1 R15             // R0 = R15
+
+// increment R14
+MOV1 R13 R1             // save data mem
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+MOV2 R1 R13             // restore data mem
+
+
+LW R14                   // R15 = Mem[LUT[1]]
+MOV2 R0 R15              // R1 = R15
+
+// NOTE: I will use R10 as a temp register to hold (p8,p4,p2,p1) this will be used for p0 calculation
+// R0 holds {5'b0,d1_in[i][11:9]}
+// R1 holds d1_in[i][ 8:1]
+
+// calculate p8
+MOV1 R2 R0               // R2 = R0, temp storage for 0000 0b11:b9
+MOV1 R3 R1               // R3 = R1, temp storage for b8:b1
+MOV2 R0 R3               // R0 = R3       
+// get rid of the last 4 bits
+SET R1 #4                // R1 = 4
+SRL R0                   // R0 = R0 >> R1 = b8:b1 >> 4 = 0000 b8:b5
+SLL R0                   // R0 = R0 << R1 = b8:b5 0000
+MOV2 R1 R2               // R1 = R2 = 0000 0b11:b9
+OR R0                    // R0 = R0 | R1 = b8:b5 0000 | 0000 0b11:b9 = b8:b5 0b11:b9
+XORR R0                  // R0 = ^(R0) = p8
+MOV1 R13 R0              // R13 = R0, save p8
+MOV1 R10 R0              // R10 = 0000 000p8
+MOV2 R0 R10              // R0 = R10 -> R0 = 0000 000p8
+SET R1 #1                // R1 = 1
+SLL R10                  // R10 = R0 << R1 = R0 << 1 = 0000 00p8 0, instruction 25
+
+// build output 1: (b11:b5, p8)
+
+// We are building R4 which is a copy of R2 but shifted 5 bits to the left
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+SET R1 #5                // R1 = 5
+SLL R4                   // R4 = R0 << R1 = 0000 0 b11 b10 b9 << 5 = b11:b90 0000
+
+// We are building R5 which is a copy of R3 but shifted 3 bits to the right
+MOV2 R0 R3               // R0 = R3, restore b8:b1
+SET R1 #3                // R1 = 3
+SRL R5                   // R5 = R0 >> R1 = b8:b1 >> 3 = 000b8:b1
+
+// OR R4 and R5
+MOV2 R0 R4               // R0 = R4, restore b11:b90 0000, instruction 32
+MOV2 R1 R5               // R1 = R5, restore 000b8:b4
+OR R5                    // R5 = R0 | R1 = b11:b4
+
+// Shift to get rid of the last bit
+MOV2 R0 R5               // R0 = R5, restore b11:b4, instruction 35
+SET R1 #1                // R1 = 1
+SRL R0                   // R5 = R0 >> R1 = b11:b4 >> 1 = 0b11:b5
+SLL R5                   // R5 = R0 << R1 = 0b11:b5 << 1 = b11:b50
+
+// OR to put p8 into the output 1
+MOV2 R0 R5               // R0 = R5, restore b11:b5 0, instruction 39
+MOV2 R1 R13              // R1 = R13, restore p8 -> 0000 000p8
+OR R5                    // R5 = R0 | R1 = b11:b5 p8, instruction 41
+
+// move a copy of R5 to R7
+MOV2 R0 R5
+MOV1 R7 R0
+
+// after this, R5 is (b11:b5 p8)
+
+// restore input 1 & 2
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate p4 ^(b11 b10 b9 b8, b4, b3, b2)
+MOV1 R2 R0               // R2 = R0, temp storage for 0000 0b11:b9
+MOV1 R3 R1               // R3 = R1, temp storage for b8:b1
+
+SET R0 b'10001           // R0 = b'10001
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'10001 << 3 = b'1000 1000
+SET R1 b'00110           // R1 = b'00110
+OR R1                    // R0 = R0 | R1 = b'1000 1110, instruction 50
+MOV2 R0 R3               // R0 = R3, restore b8:b1
+AND R4                   // R4 = R0 & R1 -> b8:b1 & b'1000 1110 = b8000 b4b3b20, instruction 53
+MOV2 R0 R4               // R0 = R4
+XORR R0                 // R0 = ^(R0) = ^(b8, b4, b3, b2)
+SET R1 #0               // R1 = 0
+OR R1                   // R1 = R0 | R1
+MOV2 R0 R2               // R0 = R2, restore R0
+XORR R0                 // R0 = ^(R0) = ^(b11:b9), instruction 61
+XOR R0                  // R0 = R0 ^ R1 = p4
+MOV1 R13 R0              // R13 = R0, save p4, instruction 63
+MOV2 R1 R10              // R1 = R10 = 0000 00p8 0
+XOR R0                  // R0 = R0 ^ R1 = 0000 00p8 p4
+MOV1 R10 R0              // R10 = R0, save 0000 00p8 p4, 
+
+// Build up Output 2 -> (b4, b3, b2, p4, b1, 0, 0, 0)
+// MOV R4 R3, copy value of R3
+MOV2 R0 R3
+MOV1 R4 R0              // instruction 67
+
+// R4 << 4
+MOV2 R0 R4
+SET R1 #4
+SLL R4                  // instruction 70
+
+// AND R4 1110 0000
+SET R0 b'11100
+SET R1 #3
+SLL R1                  // R1 = R0 << 3 =  1110 0000             
+MOV2 R0 R4
+AND R4                  // instruction 75
+
+// shift p4 left by 4 to make it (000 p4 0000)
+MOV2 R0 R13
+SET R1 #4
+SLL R1
+
+// OR R4 and R13, which is p4 to make (b4, b3, b2, p4 0000)
+MOV2 R0 R4
+OR R4                   // instruction 79
+
+// after this, R4 should be (b4, b3, b2, p4 0000) 
+
+// make copy of R3 and put into R5
+MOV2 R0 R3
+MOV1 R5 R0              // R5 = R3 = b8:b1 
+      
+
+// AND R5 0000 0001
+MOV2 R0 R5
+SET R1 #1
+AND R5                  // R5 = R5 & R1 = 0000 000b1, instruction 82
+
+// R5 << 3
+MOV2 R0 R5
+SET R1 #3
+SLL R5                  // R5 = R5 << R1 = 0000 000b1 << 3 = 0000 b1 000
+
+// OR R4 R5, R4 is (b4:b2, p4, 0000), R5 is (0000  b1 000)
+MOV2 R0 R4   
+MOV2 R1 R5
+OR R4               // R4 = R0 | R1 = (b4:b2, p4, b1, 000), instruction 88
+
+// after this, R4 is (b4:b2, p4, b1, 000)
+
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate p2
+MOV1 R2 R0               // R2 = R0, temp storage for 0000 0b11:b9
+MOV1 R3 R1               // R3 = R1, temp storage for b8:b1, instruction 90
+
+SET R0 b'01101           // R0 = b'01101
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'01101 << 3 = b'0110 1000
+SET R1 b'00101           // R1 = b'0000 0101
+OR R1                    // R1 = R0 | R1 = b'0110 1101
+MOV2 R0 R3               // R0 = R3
+AND R5                   // R5 = R0 & R1
+MOV2 R0 R5               // R0 = R5
+XORR R0                  // R0 = ^(R0) = ^(b7, b6, b4, b3, b1)
+MOV1 R6 R0               // R6 = R0, save ^(b7, b6, b4, b3, b1), instruction 102
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+SET R1 #1                // R1 = 1
+SRL R0                   // R0 = R0 >> R1 = 0000 0b11:b9 >> 1 = 0000 00b11:b10
+SLL R0                   // R0 = R0 << R1 = 0000 00b11:b10 << 1 = 0000 0b11:b100
+XORR R0                  // R0 = ^(R0) = ^(b11:b10)
+MOV2 R1 R6               // R1 = R6, restore ^(b7, b6, b4, b3, b1) back into R1
+XOR R0                  // R0 = R0 ^ R1 = p2
+
+// Goal: make R4 (b4:b2, p4, b1, p2, 00)
+MOV1 R13 R0
+MOV2 R0 R10             // R0 = R10 = 0000 00p8 p4
+SET R1 #1               // instruction 110
+SLL R1                  // R1 = R10 = 0000 0 p8 p4 0
+MOV2 R0 R13             // R0 = p2
+XOR R0                  // R0 = R0 ^ R1 = 0000 00p8 p4 p2, instruction 115
+MOV1 R10 R0             // R10 = R0, save 0000 00p8 p4 p2
+
+// make R13 0000 0 p2 00
+MOV2 R0 R13
+SET R1 #2
+SLL R13
+
+// OR R13 and R4 to make (b4:b2, p4, b1, p2, 00)
+MOV2 R0 R13             // instruction 120
+MOV2 R1 R4
+OR R4                   // instruction 122
+
+// after this, R4 is (b4:b2, p4, b1, p2, 00)
+
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate p1
+MOV1 R2 R0               // R2 = R0, temp storage for R0
+MOV1 R3 R1               // R3 = R1, temp storage for R1
+
+SET R0 b'01011           // R0 = b'0000 1011
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'0000 1011 << 3 = b'0101 1000
+SET R1 b'00011           // R1 = b'0000 0011
+OR R1                    // R1 = R0 | R1 = b'0101 1011
+MOV2 R0 R3               // R0 = R3 -> b8:b1, instruction 130
+AND R5                   // R5 = R0 & R1 -> (0,b7,0,b5,b4,0,b2,b1)
+MOV2 R0 R5               // R0 = R5 -> (0,b7,0,b5,b4,0,b2,b1)
+XORR R0                  // R0 = ^(R0) = ^(b7, b5, b4, b2, b1)
+MOV1 R6 R0               // R6 = R0, save ^(b7, b5, b4, b2, b1)
+MOV2 R0 R2               // R0 = R2, 0000 0b11:b9
+SET R1 b'00101           // R1 = b'0000 0101
+AND R0                   // R0 = R0 & R1 = 0000 0b11:b9 & b'0000 0101 = 0000 0 b11 0 b9
+XORR R0                  // R0 = ^(R0) = ^(b11,b9)
+MOV2 R1 R6               // R1 = R6, restore ^(b7, b5, b4, b2, b1)
+XOR R0                  // R0 = R0 ^ R1 = p1, instruction 140 
+
+// Goal: make R4 (b4:b2, p4, b1, p2, p1, 0)
+MOV1 R13 R0
+MOV2 R0 R10              // R1 = R10 = 0000 00p8 p4 p2
+SET R1 #1
+SLL R1
+MOV2 R0 R13
+XOR R0                  // R0 = R0 ^ R1 = 0000 00p8 p4 p2 p1
+MOV1 R10 R0              // R10 = R0, save 0000 00p8 p4 p2 p1
+
+// make R13 0000 00 p1 0
+MOV2 R0 R13
+SET R1 #1
+SLL R13                 // instruction 152
+
+// OR R13 and R4 to make (b4:b2, p4, b1, p2, p1, 0)
+MOV2 R0 R13
+MOV2 R1 R4
+OR R4                   // instruction 155
+
+// after this, R4 is (b4:b2, p4, b1, p2, p1, 0)
+
+// calculate p0
+MOV2 R0 R2              // R0 = R2, restore 0000 0b11:b9
+XORR R1                 // R1 = ^(R0) = ^(b11:b9)
+MOV2 R0 R3              // R0 = R3, restore b8:b1
+XORR R0                 // R0 = ^(R0) = ^(b8:b1)
+// xor with p1, p2, p4, p8 as well (NOTE: Check this logic)
+XOR R1                  // R1 = R0 ^ R1 = ^(b11:b1)
+MOV2 R0 R10             // R0 = R10 = 0000 00p8 p4 p2 p1, instruction 161
+XORR R0                 // R0 = ^(R0) = ^(0000 00p8 p4 p2 p1) -> (p8^p4^p2^p1), instruction 162
+XOR R0                  // R0 = R0 ^ R1 = ^(b11:1) ^ (p8^p4^p2^p1), instruction 163
+
+// Goal: make R4 (b4:b2, p4, b1, p2, p1, p0)
+MOV1 R13 R0
+
+// OR R13 and R4 to make (b4:b2, p4, b1, p2, p1, p0)
+MOV2 R0 R13
+MOV2 R1 R4              // instruction 166
+OR R4
+
+// after this, R4 is (b4:b2, p4, b1, p2, p1, p0)
+
+// decrement R14
+MOV2 R0 R14
+SET R1 #1               // instruction 169
+SUB R14                 // instruction 170
+
+// offset R14 by 30 and put into R12. this will hold the output1 datamem index
+SET R0 #30              // instruction 171
+MOV2 R1 R14             // instruction 172
+ADD R12 
+
+// store output 1 (R4) into data memory
+MOV2 R0 R4
+MOV1 R15 R0             // instruction 177
+SW R12
+
+// increment iterator variable R14
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+
+// increment R12 by 1. this will now hold output2 datamem index
+SET R0 #1
+MOV2 R1 R12
+ADD R12                 // instruction 182
+
+// store output 2 (R7) into data memory
+MOV2 R0 R7
+MOV1 R15 R0             // instruction 184
+SW R12 
+
+// increment iterator variable R14
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+
+// branch if iterator is 32 (loop has executed 15 times)
+
+// SET R0 #32 using only 5 bits
+SET R0 #1           // R0 = 0000 0001
+SET R1 #5
+SLL R0              // R0 = R0 << R1 = 0010 0000 = 32, instruction 191
+MOV2 R1 R14
+BNE LOOP
+
+NOOP

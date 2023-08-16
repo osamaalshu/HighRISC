@@ -1,0 +1,382 @@
+SET R0 #30              // R0 = 30, used for temp storage
+MOV1 R14 R0             // R14 = R0 -> R14 = 30, used for looping through the 15 2-byte messages
+
+LOOP:
+
+// read from data mem into R1
+LW R14                  // R15 = Mem[LUT[R14]]
+MOV2 R1 R15             // R0 = R15, instruction 4
+MOV1 R5 R1              // temp store original input b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+
+// increment R14
+MOV2 R0 R14
+SET R1 #1
+ADD R14
+MOV2 R1 R5             // restore data mem, instruction 9
+
+// read from data mem into R0
+LW R14                   // R15 = Mem[LUT[R14+1]]
+MOV2 R0 R15              // R1 = R15
+MOV1 R10 R0              // temp store original input b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+
+// Right now, R0, R10 holds b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+// Right now, R1, R5 holds b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+
+// Make R2 = 0000 0b11:b9
+// Make R3 = b8:b1
+
+// Make R2 = 0000 0b11:b9 
+MOV1 R2 R0             // R2 = b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+SET R1 #5
+SRL R2                  // R2 = 0000 0 b11 b10 b9, instruction 15
+
+// Make R3 = b8:b1
+MOV2 R0 R10             // R0 = b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8   
+SET R1 #1
+SRL R0                  // R0 = 0 | b11 | b10 | b9 | b8 | b7 | b6 | b5
+SET R1 #4               // instruction 19
+SLL R8                  // R8 = b8 | b7 | b6 | b5 | 0000
+MOV2 R0 R5              // R0 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+SET R1 #4               
+SRL R1                  // R1 = 0000 | b4  | b3  | b2 | p4 
+MOV2 R0 R8              // R0 = b8 | b7 | b6 | b5 | 0000
+OR R0                   // R0 = R0 | R1 = (b8, b7, b6, b5, b4, b3, b2, p4)
+SET R1 #1
+SRL R0                  
+SLL R8                  // R8 =  (b8, b7, b6, b5, b4, b3, b2, 0)
+MOV2 R0 R5              // R0 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0, instruction 29          
+SET R1 #4
+SLL R0                  // R0 = (b1, p2, p1, p0, 0000)
+SET R1 #7
+SRL R0                  // R0 = (0000 000b1)
+MOV2 R1 R8              // R1 = (b8, b7, b6, b5, b4, b3, b2, 0)
+OR R8                   // R8 = (b8, b7, b6, b5, b4, b3, b2, b1), instruction 35
+
+// Put into b8:b1 into R3
+MOV2 R0 R8
+MOV1 R3 R0
+
+// Now, R2 holds 0000 0b11:b9
+// Now, R3 holds b8:b1
+
+// q8 = ^(b11:b5)
+// calculate q8 and store in R13     
+// get rid of the last 4 bits
+MOV2 R0 R3               // R0 = R3 = (b8:b1)
+SET R1 #4                // R1 = 4, instruction 40
+SRL R0                   // R0 = R0 >> R1 = b8:b1 >> 4 = 0000 b8:b5
+SLL R0                   // R0 = R0 << R1 = b8:b5 0000
+MOV2 R1 R2               // R1 = R2 = 0000 0b11:b9
+OR R0                    // R0 = R0 | R1 = b8:b5 0000 | 0000 0b11:b9 = b8:b5 0b11:b9
+XORR R0                  // R0 = ^(R0) = q8
+MOV1 R13 R0              // R13 = R0, save q8
+
+// make R13 to be (000 q8 0 0 0 0), eventually (000 q8, q4, q2, q1, q0)
+MOV2 R0 R13             // R13 = q8
+SET R1 #4
+SLL R13                 // R13 = (000 q8 0 0 0 0)
+
+// restore input 1 & 2
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9, instruction 50
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate q4 = ^(b11:b8, b4, b3, b2)
+SET R0 b'10001           // R0 = b'10001
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'10001 << 3 = b'1000 1000
+SET R1 b'00110           // R1 = b'00110
+OR R1                    // R0 = R0 | R1 = b'1000 1110
+MOV2 R0 R3               // R0 = R3, restore b8:b1
+AND R0                   // R4 = R0 & R1 -> b8:b1 & b'1000 1110 = b8, 000 b4, b3, b2, 0
+XORR R4                  // R4 = ^(R0) = ^(b8, b4, b3, b2)
+MOV2 R0 R2               // R0 = (b11:b9), instruction 60
+XORR R0                  // R0 = ^(R0) = ^(b11:b9)
+MOV2 R1 R4               // R1 = ^(b8, b4, b3, b2)
+XOR R0                   // R0 = R0 ^ R1 = q4 
+
+// make R13 to be (000 q8 q4 0 0 0), eventually (000 q8, q4, q2, q1, q0)
+SET R1 #3
+SLL R0                  // R0 = (0000 q4 000)
+MOV2 R1 R13             // R1 = (000 q8 0000)
+OR R13                 // R13 = (000 q8 q4 0 0 0)
+
+// restore input 1 & 2
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate q2 = ^(b11, b10, b7, b6, b4, b3, b1)
+SET R0 b'01101           // R0 = b'01101, instruction 70
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'01101 << 3 = b'0110 1000
+SET R1 b'00101           // R1 = b'0000 0101
+OR R1                    // R1 = R0 | R1 = b'0110 1101
+MOV2 R0 R3               // R0 = R3 = b8:b1
+AND R0                   // R0 = R0 & R1 = b'0110 1101 & b8:b1 = 0,b7,b6,0,b4,b3,0,b1
+XORR R0                  // R0 = ^(R0) = ^(b7, b6, b4, b3, b1)
+MOV1 R6 R0               // R6 = R0, save ^(b7, b6, b4, b3, b1)
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9
+SET R1 #1                // R1 = 1, instruction 80
+SRL R0                   // R0 = R0 >> R1 = 0000 0b11:b9 >> 1 = 0000 00b11:b10
+SLL R0                   // R0 = R0 << R1 = 0000 00b11:b10 << 1 = 0000 0b11:b100
+XORR R0                  // R0 = ^(R0) = ^(b11:b10)
+MOV2 R1 R6               // R1 = R6, restore ^(b7, b6, b4, b3, b1) back into R1
+XOR R0                   // R0 = R0 ^ R1 = q2
+
+// make R13 to be (000 q8 q4 q2 0 0), eventually (000 q8, q4, q2, q1, q0)
+SET R1 #2
+SLL R0                  // R0 = (0000 0 q2 00)
+MOV2 R1 R13             // R1 = (000 q8 q4 000)
+OR R13                 // R13 = (000 q8 q4 q2 0 0)
+
+// restore input 1 & 2
+MOV2 R0 R2               // R0 = R2, restore 0000 0b11:b9, instruction 90
+MOV2 R1 R3               // R1 = R3, restore b8:b1
+
+// calculate q1 = ^(b11, b9, b7, b5, b4, b2, b1)
+SET R0 b'01011           // R0 = b'0000 1011
+SET R1 #3                // R1 = 3
+SLL R0                   // R0 = R0 << R1 = b'0000 1011 << 3 = b'0101 1000
+SET R1 b'00011           // R1 = b'0000 0011
+OR R1                    // R1 = R0 | R1 = b'0101 1011
+MOV2 R0 R3               // R0 = R3 -> b8:b1
+AND R0                   // R0 = R0 & R1 -> (0,b7,0,b5,b4,0,b2,b1)
+XORR R0                  // R0 = ^(R0) = ^(b7, b5, b4, b2, b1)
+MOV1 R6 R0               // R6 = R0, save ^(b7, b5, b4, b2, b1), instruction 100
+MOV2 R0 R2               // R0 = R2, 0000 0b11:b9
+SET R1 b'00101           // R1 = b'0000 0101
+AND R0                   // R0 = R0 & R1 = 0000 0b11:b9 & b'0000 0101 = 0000 0 b11 0 b9
+XORR R0                  // R0 = ^(R0) = ^(b11,b9)
+MOV2 R1 R6               // R1 = R6, restore ^(b7, b5, b4, b2, b1)
+XOR R0                   // R0 = R0 ^ R1 = q1
+
+// make R13 to be (000 q8 q4 q2 q1 0), eventually (000 q8, q4, q2, q1, q0)
+SET R1 #1
+SLL R0                  // R0 = (0000 00 q1 0)
+MOV2 R1 R13             // R1 = (000 q8 q4 q2 00)
+OR R13                 // R13 = (000 q8 q4 q2 q1 0), instruction 110
+
+// (R10) input1: b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+// (R5)  input0: b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+
+// calculate q0 = ^(b11:1, p8, p4, p2, p1)
+MOV2 R0 R5              // R0 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0, instruction 111
+SET R1 #1
+SRL R0                  
+SLL R0                  // R0 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | 0, instruction 114
+XORR R1                 // R0 = ^(b4:b1, p1, p2, p4)
+MOV2 R0 R10
+XORR R0                 // instruction 117
+XOR R8                  // R8 = ^(R0) = ^(b11:b1, p1, p2, p4, p8) = q0 NOTE: Save q0 into R8 for later
+      
+// make R13 to be (000 q8 q4 q2 q1 q0)
+MOV2 R0 R8              // R0 = q0
+MOV2 R1 R13             // R1 = (000 q8 q4 q2 q1 0), instruction 120
+OR R13                 // R13 = (000 q8 q4 q2 q1 q0), instruction 121
+
+// compute syndrome bits = (q8 q4 q2 q1 q0) ^ (p8 p4 p2 p1 p0)
+// we have (q8 q4 q2 q1 q0) inside of R13, WE NEED TO EXTRACT THE p's into R12
+
+// extract p8
+MOV2 R0 R10             // R0 = R10, restore b11 b10 b9 b8 b7 b6 b5 p8, instruction 120
+SET R1 b'00001          // R1 -> 0000 0001
+AND R12                 // R12 -> 0000 0001 & b11 b10 b9 b8 b7 b6 b5 p8 -> 0000 000p8
+MOV2 R0 R12
+SET R1 #4
+SLL R12                 // R12 = (000 p8 0000)
+
+// extract p4
+SET R1 b'10000           // R1 -> 0001 0000
+MOV2 R0 R5               // R0 -> b4  b3  b2 p4 b1 p2 p1 p0
+AND R0                   // R0 -> 000p4 0000
+SET R1 #1                // R1 = 1
+SRL R0                   // R0 -> 0000 p4 000, instruction 130
+MOV2 R1 R12              // R1 -> 000 p8 0000
+OR R12                   // R12 = R0 | R1 = 0000 p4 000 | 000 p8 0000 = 000 p8 p4 000
+
+// extract p2
+SET R1 b'00100           // R1 -> 0000 0100
+MOV2 R0 R5               // R0 -> b4  b3  b2 p4 b1 p2 p1 p0
+AND R0                   // R0 -> 0000 0p200
+MOV2 R1 R12              // R1 -> 000 p8 p4 000
+OR R12                   // R12 = R0 | R1 = 0000 0p200 | 000 p8 p4 000 = 000 p8 p4 p2 00
+
+// extract p1
+SET R1 b'00010           // R1 -> 0000 0010
+MOV2 R0 R5               // R0 -> b4  b3  b2 p4 b1 p2 p1 p0
+AND R0                   // R0 -> 0000 00p10, instruction 140
+MOV2 R1 R12              // R1 -> 000 p8 p4 p2 00
+OR R12                   // R12 = R0 | R1 = 0000 00p10 | 000 p8 p4 p2 00 = 000 p8 p4 p2 p1 0
+
+// extract p0
+SET R1 b'00001           // R1 -> 0000 0001
+MOV2 R0 R5               // R0 -> b4  b3  b2 p4 b1 p2 p1 p0
+AND R0                   // R0 -> 0000 000p0
+MOV1 R9 R0               // NOTE: R9 holds p0 for later, instruction 146
+MOV2 R1 R12              // R1 -> 000 p8 p4 p2 p1 0
+OR R12                   // R12 = R0 | R1 = 0000 000p0 | 000 p8 p4 p2 p1 0 = 000 p8 p4 p2 p1 p0
+
+// now R12 holds (p8 p4 p2 p1 p0) and R13 holds (q8 q4 q2 q1 q0)
+// create the syndrome bits which is R12 ^ R13 and store into R11
+
+MOV2 R0 R12              // R12 = (p8 p4 p2 p1 p0)
+MOV2 R1 R13              // R13 = (q8 q4 q2 q1 q0), instruction 150
+XOR R0                   // R0 -> (000 s8 s4 s2 s1 s0)          
+SET R1 #1                // R1 -> 1
+SRL R11                  // R11 -> (0000 s8 s4 s2 s1) = syndrome bits = index of flipped bit
+
+// update R2 to be unchanged R5
+MOV2 R0 R5
+MOV1 R2 R0              // R2 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+
+// update R3 to be unchanged R10
+MOV2 R0 R10
+MOV1 R3 R0              // R2 = b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+
+// check if overall parity matches. R8 holds q0, R9 holds p0
+MOV2 R0 R8               // R0 = q0, after this R8 is free, instruction 154
+MOV2 R1 R9               // R1 = p0, instruction 155
+BNE OVERALL_DONT_MATCH   // if overall parity don't match, go to else block (labeled by OVERALL_DONT_MATCH)
+
+// overall parity matches hurray, but what if it is 2 bit corruption. Check syndrome bit non-zero
+// R11 holds (0000 s8, s4, s2, s1)
+MOV2 R0 R11              // R0 -> 0000 s8, s4, s2, s1 = syndrome
+SET R1 #0                // R1 = 0
+BEQ NO_ERROR             // Syndrome == 0 -> no error detected  
+
+// syndrome is non-zero, oh no, that means 2 bit corruption. need to set F1 to 1
+// Output 1: F1 F0 0  0  0  D11 D10 D9 (stored in R8)
+// Output 2: D8 D7 D6 D5 D4 D3  D2  D1 (stored in R6)
+
+// 2-bit corruption 
+SET R0 b'10000           // instruction 160
+SET R1 #3
+SLL R8                   // R8 -> F1 F0 0  0  0  D11 D10 D9 -> where F1 = 1
+
+// done with this case! Branch to END to avoid entering OVERALL_DONT_MATCH block!
+SET R0 #1
+SET R1 #1
+BEQ NO_ERROR
+
+OVERALL_DONT_MATCH:
+// overall parity doesn't match, this means we have corruption somewhere! R11 holds the syndrome
+// 1 bit error! set F0 = 1
+SET R0 b'01000          // instruction 166
+SET R1 #3
+SLL R8                   // R8 -> F1 F0 0  0  0  D11 D10 D9 -> where F0 = 1
+
+// correct the error
+// flip the bit at msg[syndrome] 
+
+// Fix corrupt bits within original input (either R10 or R5)
+// (R10) input1: b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+// (R5)  input0: b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+// if syndrome < 8, then we know it is in R5, otherwise it is in R10
+MOV2 R0 R11              // R0 -> 0000 s8 s4 s2 s1
+SET R1 #8                // R1 = 8, instruction 170
+BLT SYNDROME_IN_R5       // if syndrome < 8, go to SYNDROME_IN_R3
+
+// error is in R10, so fix the error
+SUB R1				    // R1 = syn - 8 (Eg. if syn == 9 -> syn - 8 = 1)
+SET R0 b'00001  	    // R0 = 1
+SLL R0 				    // R0 = R0 << syndrome (Eg. if syn == 9 -> R0 = 0000 0010)
+MOV2 R1 R10 			// R1 = R10 -> restore b11 | b10 | b9 | b8 | b7 | b6 | b5 | p8
+XOR R3 				    // This should flip the syndome indexed bit in R3, instruction 176
+
+// done with this case! Branch to END to avoid entering SYNDROME_IN_R3 block!
+SET R0 #1
+SET R1 #1
+BEQ NO_ERROR
+
+SYNDROME_IN_R5:
+
+// error is in R5, so fix the error
+SET R0 b'00001		     // R0 = 1, instruciton 180
+MOV2 R1 R11              // R1 = syndrome
+SLL R0 					 // R0 << (syndrome) (Eg. if syn == 1, then R0 = 0000 0010)
+MOV2 R1 R5 				 // R1 = b4  | b3  | b2 | p4 | b1 | p2 | p1 | p0
+XOR R2 					 // This should flip the syndome indexed bit in R2, instruction 184
+
+NO_ERROR:
+// build up R8, we have R8 as F1 F0 00 0000, we want R8 to be F1 F0 00 0 b11 b10 b9
+MOV2 R0 R3               // R0 = R3, restore b11 b10 b9 b8 b7 b6 b5 p8, instruction 185
+SET R1 #5                // R1 = 5
+SRL R0                   // R0 -> 0000 0 b11 b10 b9
+MOV2 R1 R8               // R1 -> F1 F0 00 0000
+OR R8                    // R8 = R0 | R1 = 0000 0 b11 b10 b9 | F1 F0 00 0000 = F1 F0 00 0 b11 b10 b9, instruction 189
+
+// build up R6, we want it to be b8:b1
+// add b8:b5
+MOV2 R0 R3               // R0 -> b11 b10 b9 b8 b7 b6 b5 p8, instruction 190
+SET R1 b'11110           // R1 = 0001 1110
+AND R0                   // R0 = 000 b8 b7 b6 b5 0
+SET R1 #3                // R1 = 3
+SLL R6                   // R6 = R0 << 3 = b8 b7 b6 b5 0000
+
+// add b4:b2 to R6
+SET R0 b'11100
+SET R1 #3                
+SLL R1                   // R1 = 1110 0000
+MOV2 R0 R2               // R0 = b4 b3 b2 p4 b1 p2 p1 p0
+AND R0                   // R0 = b4 b3 b2 0 0000
+SET R1 #4                // R1 = 4 , instruction 200
+SRL R0                   // R0 = R0 >> 4 = 0000 b4 b3 b2 0
+MOV2 R1 R6               // R1 = R6 = b8 b7 b6 b5 0000
+OR R6                    // R6 = R0 | R1 = b8 b7 b6 b5 b4 b3 b2 0
+
+// add b1 to R6
+MOV2 R0 R2               // R0 = b4 b3 b2 p4 b1 p2 p1 p0
+SET R1 b'01000           // R1 = 0000 1000
+AND R0                   // R0 = 0000 b1000
+SET R1 #3                // R1 = 3
+SRL R0                   // R0 = R0 >> 3 = 0000 000b1
+MOV2 R1 R6               // R1 = R6 = b8 b7 b6 b5 b4 b3 b2 0
+OR R6                    // R6 = R0 | R1 = b8 b7 b6 b5 b4 b3 b2 b1, instruciton 210
+
+// Now R8 is F1 F0 00 0 b11 b10 b9
+// Now R6 is b8:b1
+
+// decrement R14
+MOV2 R0 R14
+SET R1 #1
+SUB R14
+
+// offset R14 by 30 and put into R7. this will hold the output1 datamem index
+MOV2 R0 R14             // instruction 171
+SET R1 #30              // instruction 172
+SUB R7 
+
+// store output 1 (R6) into data memory
+MOV2 R0 R6
+MOV1 R15 R0
+SW R7
+
+// increment iterator variable R14
+MOV2 R0 R14                 // instruction 220
+SET R1 #1
+ADD R14
+
+// increment R7 by 1. this will now hold output2 datamem index
+SET R0 #1
+MOV2 R1 R7
+ADD R7
+
+// store output 2 (R8) into data memory
+MOV2 R0 R8
+MOV1 R15 R0                 // instruction 227
+SW R7
+
+// increment iterator variable R14
+MOV2 R0 R14                 // instruction 229
+SET R1 #1
+ADD R14
+
+// branch if iterator is 60 (loop has executed 15 times)
+SET R0 #1           // R0 = 0000 0001
+SET R1 #6
+SLL R0              // R0 = R0 << R1 = 0100 0000 = 64
+SET R1 #4
+SUB R0              // R0 = 60
+MOV2 R1 R14
+BNE LOOP
+
+NOOP
